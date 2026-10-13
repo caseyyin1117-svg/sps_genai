@@ -14,10 +14,13 @@ WORKDIR /code
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 
-RUN uv sync --frozen
+RUN uv sync --frozen --python 3.13
+
 RUN uv run python -m spacy download en_core_web_lg
 
 COPY app ./app
 COPY main.py ./
+
+COPY models ./models
 
 CMD ["uv", "run", "fastapi", "run", "main.py", "--port", "80"]

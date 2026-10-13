@@ -8,3 +8,11 @@ wheels/
 
 # Virtual environments
 .venv
+
+
+# CIFAR-10 training dataset
+data/
+
+# Python cache
+__pycache__/
+*.pyc

@@ -3,6 +3,10 @@ from app.bigram_model import BigramModel
 from app.embedding_model import calculate_embedding
 import io
 import torch
+from app.gan_model import Generator
+from fastapi.responses import Response
+from torchvision.utils import make_grid
+
 
 from PIL import Image
 from fastapi import UploadFile, File
@@ -99,3 +103,48 @@ async def classify_image(file: UploadFile = File(...)):
     return {
         "predicted_class": predicted_class
     }
+    
+gan_generator = Generator()
+
+gan_generator.load_state_dict(
+    torch.load(
+        "models/gan_generator.pth",
+        map_location="cpu",
+        weights_only=True
+    )
+)
+
+gan_generator.eval()
+
+
+@app.get("/generate-image")
+def generate_image():
+
+    noise = torch.randn(16, 100)
+
+    with torch.no_grad():
+        fake_images = gan_generator(noise)
+
+    grid = make_grid(
+        fake_images,
+        nrow=4,
+        normalize=True,
+        value_range=(-1, 1)
+    )
+
+    image_array = (
+        grid.mul(255)
+        .byte()
+        .permute(1, 2, 0)
+        .numpy()
+    )
+
+    image = Image.fromarray(image_array)
+
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+
+    return Response(
+        content=buffer.getvalue(),
+        media_type="image/png"
+    )

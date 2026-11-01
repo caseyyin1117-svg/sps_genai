@@ -1,9 +1,12 @@
+import os
+
 import torch
+import torch.nn as nn
 from torch import optim
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
-from app.gan_model import Generator, Critic
+from app.gan_model import Generator, Discriminator
 
 
 def train_gan(epochs=20, batch_size=64, z_dim=100):
@@ -30,44 +33,54 @@ def train_gan(epochs=20, batch_size=64, z_dim=100):
     )
 
     generator = Generator(z_dim).to(device)
-    critic = Critic().to(device)
+    discriminator = Discriminator().to(device)
 
-    lr = 5e-5
-    n_critic = 5
-    clip_value = 0.01
+    criterion = nn.BCELoss()
 
-    optimizer_g = optim.RMSprop(generator.parameters(), lr=lr)
-    optimizer_c = optim.RMSprop(critic.parameters(), lr=lr)
+    optimizer_g = optim.Adam(
+        generator.parameters(), lr=0.0002, betas=(0.5, 0.999)
+    )
+
+    optimizer_d = optim.Adam(
+        discriminator.parameters(), lr=0.0002, betas=(0.5, 0.999)
+    )
 
     for epoch in range(epochs):
         for real_images, _ in dataloader:
             real_images = real_images.to(device)
             current_batch_size = real_images.size(0)
 
-            for _ in range(n_critic):
-                noise = torch.randn(
-                    current_batch_size, z_dim, 1, 1, device=device
-                )
-                fake_images = generator(noise).detach()
-
-                critic_real = critic(real_images).mean()
-                critic_fake = critic(fake_images).mean()
-
-                loss_c = -(critic_real - critic_fake)
-
-                optimizer_c.zero_grad()
-                loss_c.backward()
-                optimizer_c.step()
-
-                for p in critic.parameters():
-                    p.data.clamp_(-clip_value, clip_value)
-
-            noise = torch.randn(
-                current_batch_size, z_dim, 1, 1, device=device
+            real_labels = torch.ones(
+                current_batch_size, 1, device=device
+            )
+            fake_labels = torch.zeros(
+                current_batch_size, 1, device=device
             )
 
+            noise = torch.randn(
+                current_batch_size, z_dim, device=device
+            )
             fake_images = generator(noise)
-            loss_g = -critic(fake_images).mean()
+
+            real_output = discriminator(real_images)
+            fake_output = discriminator(fake_images.detach())
+
+            loss_d = (
+                criterion(real_output, real_labels)
+                + criterion(fake_output, fake_labels)
+            )
+
+            optimizer_d.zero_grad()
+            loss_d.backward()
+            optimizer_d.step()
+
+            noise = torch.randn(
+                current_batch_size, z_dim, device=device
+            )
+            fake_images = generator(noise)
+
+            output = discriminator(fake_images)
+            loss_g = criterion(output, real_labels)
 
             optimizer_g.zero_grad()
             loss_g.backward()
@@ -75,11 +88,17 @@ def train_gan(epochs=20, batch_size=64, z_dim=100):
 
         print(
             f"Epoch [{epoch + 1}/{epochs}], "
-            f"Critic Loss: {loss_c.item():.4f}, "
+            f"Discriminator Loss: {loss_d.item():.4f}, "
             f"Generator Loss: {loss_g.item():.4f}"
         )
 
-    torch.save(generator.state_dict(), "models/gan_generator.pth")
+    os.makedirs("models", exist_ok=True)
+
+    torch.save(
+        generator.state_dict(),
+        "models/gan_generator.pth"
+    )
+
     print("Generator saved to models/gan_generator.pth")
 
 
